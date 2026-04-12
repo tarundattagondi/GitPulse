@@ -31,15 +31,18 @@ def save_analysis(username: str, role_category: str, overall_score: int,
                   category_scores: dict, jd_analysis: dict = None,
                   match_result: dict = None, recommendations: dict = None,
                   github_summary: dict = None) -> dict:
+    # Defensive: unwrap if overall_score is a dict
+    if isinstance(overall_score, dict):
+        overall_score = overall_score.get("total_score", overall_score.get("overall", 0))
     row = {
         "username": username,
         "role_category": role_category,
-        "overall_score": overall_score,
-        "category_scores": category_scores,
-        "jd_analysis": jd_analysis,
-        "match_result": match_result,
-        "recommendations": recommendations,
-        "github_summary": github_summary,
+        "overall_score": int(overall_score) if overall_score is not None else 0,
+        "category_scores": category_scores if isinstance(category_scores, dict) else {},
+        "jd_analysis": jd_analysis if isinstance(jd_analysis, dict) else None,
+        "match_result": match_result if isinstance(match_result, dict) else None,
+        "recommendations": recommendations if isinstance(recommendations, dict) else None,
+        "github_summary": github_summary if isinstance(github_summary, dict) else None,
     }
     res = get_client().table("analyses").insert(row).execute()
     return res.data[0] if res.data else {}
@@ -67,17 +70,23 @@ def get_analyses_history(username: str, limit: int = 10) -> list:
 
 # ── Snapshots (progress tracking) ────────────────────────────────
 
-def save_snapshot(username: str, role_category: str, overall_score: int,
+def save_snapshot(username: str, role_category: str, overall_score,
                   category_scores: dict, repo_count: int = 0,
-                  total_stars: int = 0, delta_since_last: dict = None) -> dict:
+                  total_stars: int = 0, delta_since_last=None) -> dict:
+    # Defensive: unwrap if overall_score is a dict
+    if isinstance(overall_score, dict):
+        overall_score = overall_score.get("total_score", overall_score.get("overall", 0))
+    # delta_since_last: extract int from dict if needed
+    if isinstance(delta_since_last, dict):
+        delta_since_last = delta_since_last.get("overall", 0)
     row = {
         "username": username,
         "role_category": role_category,
-        "overall_score": overall_score,
-        "category_scores": category_scores,
-        "repo_count": repo_count,
-        "total_stars": total_stars,
-        "delta_since_last": delta_since_last,
+        "overall_score": int(overall_score) if overall_score is not None else 0,
+        "category_scores": category_scores if isinstance(category_scores, dict) else {},
+        "repo_count": int(repo_count) if repo_count else 0,
+        "total_stars": int(total_stars) if total_stars else 0,
+        "delta_since_last": int(delta_since_last) if delta_since_last else 0,
     }
     res = get_client().table("snapshots").insert(row).execute()
     return res.data[0] if res.data else {}
