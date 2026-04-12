@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=380, initial-scale=1.0">
+  <link rel="stylesheet" href="popup.css">
+  <title>GitPulse</title>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">
+        <img src="icons/icon48.png" alt="" width="24" height="24">
+        <span>GitPulse</span>
+      </div>
+    </header>
+
+    <div class="input-group">
+      <label for="username">GitHub Username</label>
+      <input type="text" id="username" placeholder="e.g. tarundattagondi" autocomplete="off">
+    </div>
+
+    <button id="scoreBtn" class="btn-primary">Score This Job</button>
+
+    <div id="status" class="status hidden"></div>
+
+    <div id="results" class="results hidden">
+      <div class="score-ring">
+        <span id="scoreValue" class="score-value">--</span>
+        <span class="score-label">/ 100</span>
+      </div>
+
+      <div id="breakdown" class="breakdown"></div>
+
+      <div id="gaps" class="section hidden">
+        <h3>Key Gaps</h3>
+        <ul id="gapList"></ul>
+      </div>
+
+      <div id="strengths" class="section hidden">
+        <h3>Strengths</h3>
+        <ul id="strengthList"></ul>
+      </div>
+    </div>
+
+    <div class="footer">
+      <a href="https://github.com/tarundattagondi/GitPulse" target="_blank">GitPulse on GitHub</a>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
