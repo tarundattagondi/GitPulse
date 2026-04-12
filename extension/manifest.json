@@ -13,7 +13,8 @@
     "https://*.lever.co/*",
     "https://jobs.ashbyhq.com/*",
     "https://*.ashbyhq.com/*",
-    "https://gitpulse-api.up.railway.app/*"
+    "https://web-production-c8290.up.railway.app/*",
+    "https://*.up.railway.app/*"
   ],
   "action": {
     "default_popup": "popup.html",

@@ -1,5 +1,4 @@
-// TODO: swap to Railway URL after deploy
-const API_BASE = 'http://localhost:8000';
+const API_BASE = 'https://web-production-c8290.up.railway.app';
 
 const $ = (id) => document.getElementById(id);
 
@@ -94,13 +93,13 @@ async function handleScore() {
   const timeoutId = setTimeout(() => controller.abort(), 60000);
 
   try {
-    const url = `${API_BASE}/api/interview-prep`;
+    const url = `${API_BASE}/api/analyze/${username}?role_category=other`;
     console.log('GitPulse POST:', url);
 
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, jd_text: jdText.substring(0, 5000) }),
+      body: JSON.stringify({ jd_text: jdText.substring(0, 5000) }),
       signal: controller.signal,
     });
 
