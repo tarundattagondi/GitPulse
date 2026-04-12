@@ -36,8 +36,7 @@ graph TB
     end
 
     subgraph Storage
-        JSON[(JSON Files<br/>data/)]
-        SEED[(Seed Data<br/>company_benchmarks.json)]
+        SUPA[(Supabase Postgres<br/>analyses, snapshots,<br/>cached_jobs, pr_log,<br/>rate_limits, benchmarks)]
     end
 
     FE -->|HTTP| APP
@@ -61,10 +60,10 @@ graph TB
     RP -->|anthropic SDK| CLAUDE
     JBS -->|httpx| SIMPLIFY
     PRA -->|PyGithub| GHAPI
-    JBS --> JSON
-    PT --> JSON
-    PRA --> JSON
-    CB --> SEED
+    JBS --> SUPA
+    PT --> SUPA
+    PRA --> SUPA
+    CB --> SUPA
 ```
 
 ## Data Flow

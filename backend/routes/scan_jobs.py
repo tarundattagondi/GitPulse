@@ -1,15 +1,12 @@
-"""Route handlers for job scanning endpoints.
-These are plain async functions that will be wired to FastAPI in Phase 9."""
+"""Route handlers for job scanning endpoints."""
 
 import asyncio
 import uuid
 from datetime import datetime, timezone
 
 from backend.services.job_board_scanner import scan_jobs_for_user
-from backend.storage import read_json, write_json
-from backend.config import DATA_DIR
 
-# In-memory scan status tracker (will move to Redis/DB in Phase 9)
+# In-memory scan status tracker (ephemeral — scan results don't persist across restarts)
 _scan_status: dict[str, dict] = {}
 
 
@@ -19,10 +16,7 @@ async def post_scan_jobs(
     location_filters: list[str] | None = None,
     max_jobs: int = 30,
 ) -> dict:
-    """POST /api/scan-jobs — start a job scan for a user.
-
-    Returns scan_id immediately. Results are computed async.
-    """
+    """POST /api/scan-jobs — start a job scan for a user."""
     scan_id = str(uuid.uuid4())[:8]
     _scan_status[scan_id] = {
         "scan_id": scan_id,
@@ -51,8 +45,6 @@ async def post_scan_jobs(
                 "matched_jobs": sum(1 for r in results if r.get("match_score", 0) > 0),
                 "results": results,
             })
-            # Persist results
-            write_json(DATA_DIR / f"scan_{scan_id}.json", _scan_status[scan_id])
         except Exception as e:
             _scan_status[scan_id].update({
                 "status": "failed",
@@ -60,18 +52,12 @@ async def post_scan_jobs(
                 "error": str(e),
             })
 
-    # Fire and forget — caller polls status
     asyncio.create_task(_run_scan())
-
     return {"scan_id": scan_id, "status": "running"}
 
 
 async def get_scan_jobs_status(scan_id: str) -> dict:
-    """GET /api/scan-jobs/status/{scan_id} — check scan progress.
-
-    Returns current status, and results when completed.
-    """
-    # Check in-memory first
+    """GET /api/scan-jobs/status/{scan_id} — check scan progress."""
     if scan_id in _scan_status:
         status = _scan_status[scan_id]
         response = {
@@ -87,10 +73,5 @@ async def get_scan_jobs_status(scan_id: str) -> dict:
         if status["status"] == "completed":
             response["results"] = status["results"]
         return response
-
-    # Check persisted results
-    result_path = DATA_DIR / f"scan_{scan_id}.json"
-    if result_path.exists():
-        return read_json(result_path)
 
     return {"scan_id": scan_id, "status": "not_found", "error": "Scan ID not found"}

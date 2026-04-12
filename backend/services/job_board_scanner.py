@@ -8,11 +8,9 @@ from pathlib import Path
 
 import httpx
 
-from backend.storage import read_json, write_json
+from backend.storage import save_cached_jobs, get_cached_jobs
 
 SIMPLIFY_URL = "https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/dev/README.md"
-CACHE_PATH = Path(__file__).resolve().parent.parent / "data" / "cached_jobs.json"
-CACHE_TTL_SECONDS = 24 * 60 * 60  # 24 hours
 
 
 @dataclass
@@ -116,13 +114,21 @@ def _parse_html_table(readme_text: str) -> list[JobListing]:
 
 
 async def fetch_simplify_jobs(force_refresh: bool = False) -> list[JobListing]:
-    """Fetch and parse SimplifyJobs listings, with 24hr cache."""
-    # Check cache
-    if not force_refresh and CACHE_PATH.exists():
-        cache = read_json(CACHE_PATH)
-        cached_at = cache.get("cached_at", 0)
-        if time.time() - cached_at < CACHE_TTL_SECONDS:
-            return [JobListing(**j) for j in cache.get("jobs", [])]
+    """Fetch and parse SimplifyJobs listings, with 24hr Supabase cache."""
+    # Check cache in Supabase
+    if not force_refresh:
+        cached = get_cached_jobs(max_age_hours=24)
+        if cached:
+            jobs = []
+            for row in cached:
+                raw = row.get("raw", {})
+                if raw:
+                    try:
+                        jobs.append(JobListing(**{k: raw[k] for k in JobListing.__dataclass_fields__ if k in raw}))
+                    except Exception:
+                        pass
+            if jobs:
+                return jobs
 
     # Fetch fresh
     async with httpx.AsyncClient(timeout=30) as client:
@@ -132,13 +138,8 @@ async def fetch_simplify_jobs(force_refresh: bool = False) -> list[JobListing]:
 
     listings = _parse_html_table(readme_text)
 
-    # Cache
-    write_json(CACHE_PATH, {
-        "cached_at": time.time(),
-        "fetched_at": datetime.now(timezone.utc).isoformat(),
-        "total_count": len(listings),
-        "jobs": [j.to_dict() for j in listings],
-    })
+    # Cache to Supabase
+    save_cached_jobs([j.to_dict() for j in listings])
 
     return listings
 

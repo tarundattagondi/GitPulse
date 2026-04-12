@@ -3,8 +3,6 @@
 import time
 import logging
 import traceback
-from collections import defaultdict
-from datetime import date
 
 from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -46,37 +44,39 @@ async def log_requests(request: Request, call_next):
     return response
 
 
-# ── In-memory rate limiter ────────────────────────────────────────
+# ── Rate limiter (Supabase-backed) ────────────────────────────────
 # 5 analyses per IP per day without API key, unlimited with X-Anthropic-Key
-_rate_counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
 DAILY_LIMIT = 5
-RATE_LIMITED_PATHS = {
+RATE_LIMITED_PREFIXES = [
     "/api/analyze", "/api/score", "/api/scan-jobs", "/api/tri-match",
     "/api/interview-prep", "/api/pr/preview", "/api/pr/open",
-}
+]
 
 
 @app.middleware("http")
 async def rate_limiter(request: Request, call_next):
-    if request.url.path in RATE_LIMITED_PATHS:
+    path = request.url.path
+    if any(path.startswith(p) for p in RATE_LIMITED_PREFIXES):
         api_key = request.headers.get("X-Anthropic-Key")
         if not api_key:
             client_ip = request.client.host if request.client else "unknown"
-            today = date.today().isoformat()
-            key = f"{client_ip}:{today}"
-            _rate_counts[key][request.url.path] += 1
-            total = sum(_rate_counts[key].values())
-            if total > DAILY_LIMIT:
-                return JSONResponse(
-                    status_code=429,
-                    content={
-                        "error": "rate_limit_exceeded",
-                        "message": f"Daily limit of {DAILY_LIMIT} analyses exceeded. "
-                                   f"Pass X-Anthropic-Key header for unlimited access.",
-                        "limit": DAILY_LIMIT,
-                        "used": total,
-                    },
-                )
+            try:
+                from backend.storage import record_rate_hit, count_rate_hits
+                total = count_rate_hits(client_ip, hours=24)
+                if total >= DAILY_LIMIT:
+                    return JSONResponse(
+                        status_code=429,
+                        content={
+                            "error": "rate_limit_exceeded",
+                            "message": f"Daily limit of {DAILY_LIMIT} analyses exceeded. "
+                                       f"Pass X-Anthropic-Key header for unlimited access.",
+                            "limit": DAILY_LIMIT,
+                            "used": total,
+                        },
+                    )
+                record_rate_hit(client_ip, endpoint=path)
+            except Exception:
+                pass  # Don't block requests if rate limit DB is down
     return await call_next(request)
 
 
@@ -132,9 +132,6 @@ class AnalyzeRequest(BaseModel):
 @app.post("/api/analyze/{username}")
 async def analyze_post(username: str, request: AnalyzeRequest, role_category: str = "other"):
     import asyncio as _aio
-    from datetime import datetime, timezone
-    from backend.storage import read_json, write_json
-    from backend.config import DATA_DIR
 
     jd = request.jd_text or None
     result = await analyze_and_score(username, job_description=jd, role_category=role_category)
@@ -163,7 +160,6 @@ async def analyze_post(username: str, request: AnalyzeRequest, role_category: st
     total_stars = sum(r.get("stars", 0) for r in result["repos"])
 
     full_result = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
         "username": username,
         "overall_score": score.get("total_score", 0),
         "category_scores": category_scores,
@@ -180,29 +176,29 @@ async def analyze_post(username: str, request: AnalyzeRequest, role_category: st
         "snapshot": result["snapshot"],
     }
 
-    # Persist full analysis
-    analyses_path = DATA_DIR / "full_analyses.json"
-    analyses = read_json(analyses_path)
-    if username not in analyses:
-        analyses[username] = {"latest": None, "history": []}
-    analyses[username]["latest"] = full_result
-    history = analyses[username].get("history", [])
-    history.append(full_result)
-    analyses[username]["history"] = history[-10:]
-    write_json(analyses_path, analyses)
+    # Persist to Supabase
+    from backend.storage import save_analysis
+    save_analysis(
+        username=username,
+        role_category=role_category,
+        overall_score=score.get("total_score", 0),
+        category_scores=category_scores,
+        jd_analysis=jd_analysis,
+        match_result=match_result,
+        recommendations=recommendations,
+        github_summary=full_result["github_summary"],
+    )
 
     return full_result
 
 
 @app.get("/api/analysis/{username}/latest")
-async def get_latest_analysis(username: str):
-    from backend.storage import read_json
-    from backend.config import DATA_DIR
-    data = read_json(DATA_DIR / "full_analyses.json")
-    user_data = data.get(username)
-    if not user_data or not user_data.get("latest"):
+async def get_latest_analysis_endpoint(username: str):
+    from backend.storage import get_latest_analysis
+    data = get_latest_analysis(username)
+    if not data:
         raise HTTPException(status_code=404, detail="No analysis found. Run one first.")
-    return user_data["latest"]
+    return data
 
 
 @app.get("/api/analyze/{username}")

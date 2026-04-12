@@ -7,7 +7,12 @@
 │   Vercel     │     │   Railway   │     │   Chrome     │
 │  (Frontend)  │────▶│  (Backend)  │◀────│  Extension   │
 │  React SPA   │     │  FastAPI    │     │  Manifest V3 │
-└─────────────┘     └─────────────┘     └─────────────┘
+└─────────────┘     └──────┬──────┘     └─────────────┘
+                           │
+                    ┌──────┴──────┐
+                    │  Supabase   │
+                    │  Postgres   │
+                    └─────────────┘
 ```
 
 ---
@@ -30,6 +35,15 @@ Set these in the Railway dashboard under **Variables**:
 | `ANTHROPIC_API_KEY` | Your Anthropic API key (`sk-ant-...`) |
 | `GITHUB_TOKEN` | GitHub personal access token (`ghp_...`) |
 | `CLAUDE_MODEL` | `claude-sonnet-4-5` |
+| `SUPABASE_URL` | Your Supabase project URL (`https://xxx.supabase.co`) |
+| `SUPABASE_SERVICE_KEY` | Supabase service role key (`eyJ...`) |
+
+### Supabase Setup
+
+1. Create a project at [supabase.com](https://supabase.com)
+2. Run the schema SQL in the SQL Editor (creates tables: `analyses`, `snapshots`, `cached_jobs`, `pr_log`, `rate_limits`, `company_benchmarks`)
+3. Copy the project URL and service role key to Railway env vars
+4. Seed benchmarks: `python -m backend.seed_benchmarks`
 
 ### Verify
 

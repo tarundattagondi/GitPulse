@@ -1,12 +1,8 @@
 """Progress tracking: snapshot scores over time and compute deltas."""
 
-from datetime import datetime, timezone, timedelta
-from pathlib import Path
+from datetime import datetime, timezone
 
-from backend.config import DATA_DIR
-from backend.storage import read_json, write_json
-
-PROGRESS_PATH = DATA_DIR / "progress_history.json"
+from backend.storage import save_snapshot as _db_save_snapshot, get_snapshots as _db_get_snapshots
 
 
 def save_snapshot(
@@ -15,24 +11,10 @@ def save_snapshot(
     scores: dict,
     metadata: dict | None = None,
 ) -> dict:
-    """Append a scored snapshot to the user's progress history.
+    """Save a scored snapshot to the user's progress history.
 
     Returns the saved snapshot (with delta_since_last computed).
     """
-    history = read_json(PROGRESS_PATH)
-
-    if username not in history:
-        history[username] = {"snapshots": []}
-
-    snapshots = history[username]["snapshots"]
-
-    # Find last snapshot for this role_category to compute delta
-    previous = None
-    for s in reversed(snapshots):
-        if s.get("role_category") == role_category:
-            previous = s
-            break
-
     overall = scores.get("total_score", 0)
     breakdown = scores.get("breakdown", {})
 
@@ -43,6 +25,10 @@ def save_snapshot(
         else:
             category_scores[cat] = data
 
+    # Compute delta from last snapshot
+    previous_snapshots = _db_get_snapshots(username, role_category=role_category, days=365)
+    previous = previous_snapshots[-1] if previous_snapshots else None
+
     delta = None
     if previous:
         prev_overall = previous.get("overall_score", 0)
@@ -51,10 +37,10 @@ def save_snapshot(
             "days_since_last": 0,
             "categories": {},
         }
-        prev_ts = previous.get("timestamp", "")
+        prev_ts = previous.get("created_at") or previous.get("timestamp", "")
         if prev_ts:
             try:
-                prev_dt = datetime.fromisoformat(prev_ts)
+                prev_dt = datetime.fromisoformat(prev_ts.replace("Z", "+00:00"))
                 delta["days_since_last"] = (datetime.now(timezone.utc) - prev_dt).days
             except ValueError:
                 pass
@@ -63,19 +49,18 @@ def save_snapshot(
             prev_val = prev_cats.get(cat, 0)
             delta["categories"][cat] = score - prev_val
 
-    snapshot = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "role_category": role_category,
-        "overall_score": overall,
-        "category_scores": category_scores,
-        "repo_count": (metadata or {}).get("repo_count", 0),
-        "total_stars": (metadata or {}).get("total_stars", 0),
-        "delta_since_last": delta,
-    }
+    repo_count = (metadata or {}).get("repo_count", 0)
+    total_stars = (metadata or {}).get("total_stars", 0)
 
-    snapshots.append(snapshot)
-    write_json(PROGRESS_PATH, history)
-
+    snapshot = _db_save_snapshot(
+        username=username,
+        role_category=role_category,
+        overall_score=overall,
+        category_scores=category_scores,
+        repo_count=repo_count,
+        total_stars=total_stars,
+        delta_since_last=delta,
+    )
     return snapshot
 
 
@@ -85,26 +70,7 @@ def get_progress(
     days: int = 90,
 ) -> list[dict]:
     """Return filtered snapshots for a user within the given time window."""
-    history = read_json(PROGRESS_PATH)
-    snapshots = history.get(username, {}).get("snapshots", [])
-
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-
-    filtered = []
-    for s in snapshots:
-        ts = s.get("timestamp", "")
-        try:
-            dt = datetime.fromisoformat(ts)
-        except ValueError:
-            continue
-
-        if dt < cutoff:
-            continue
-        if role_category and s.get("role_category") != role_category:
-            continue
-        filtered.append(s)
-
-    return filtered
+    return _db_get_snapshots(username, role_category=role_category, days=days)
 
 
 def compute_deltas(snapshots: list[dict]) -> list[str]:
@@ -118,9 +84,9 @@ def compute_deltas(snapshots: list[dict]) -> list[str]:
         prev = snapshots[i - 1]
         curr = snapshots[i]
 
-        ts = curr.get("timestamp", "?")
+        ts = curr.get("created_at") or curr.get("timestamp", "?")
         try:
-            dt = datetime.fromisoformat(ts)
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
             date_str = dt.strftime("%b %d, %Y")
         except ValueError:
             date_str = ts
@@ -141,7 +107,6 @@ def compute_deltas(snapshots: list[dict]) -> list[str]:
 
         desc = f"{date_str}: {curr_score}/100 ({emoji} {direction} from {prev_score})"
 
-        # Category-level changes
         cat_changes = []
         prev_cats = prev.get("category_scores", {})
         curr_cats = curr.get("category_scores", {})
@@ -155,7 +120,6 @@ def compute_deltas(snapshots: list[dict]) -> list[str]:
         if cat_changes:
             desc += f" [{', '.join(cat_changes)}]"
 
-        # Repo/star changes
         prev_repos = prev.get("repo_count", 0)
         curr_repos = curr.get("repo_count", 0)
         prev_stars = prev.get("total_stars", 0)

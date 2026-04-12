@@ -17,7 +17,11 @@ GITHUB_RATE_LIMIT_UNAUTHENTICATED = 60
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5")
 
-# Storage
+# Supabase
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
+
+# Storage (legacy fallback)
 DATA_DIR = _project_root / "data"
 
 

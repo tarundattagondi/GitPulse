@@ -17,27 +17,20 @@ from pathlib import Path
 
 from github import Auth, Github, GithubException
 
-from backend.config import DATA_DIR
-from backend.storage import read_json, write_json
+from backend.storage import log_pr_attempt
 
-PR_LOG_PATH = DATA_DIR / "pr_log.json"
 ALLOWED_FILE = "README.md"
 
 
 def _log_attempt(action: str, username: str, repo_name: str, status: str, details: dict | None = None):
-    """Append an entry to the PR log."""
-    log = read_json(PR_LOG_PATH)
-    if "entries" not in log:
-        log["entries"] = []
-    log["entries"].append({
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "action": action,
-        "username": username,
-        "repo": repo_name,
-        "status": status,
-        "details": details or {},
-    })
-    write_json(PR_LOG_PATH, log)
+    """Log a PR attempt to the database."""
+    log_pr_attempt(
+        action=action,
+        username=username,
+        repo_name=repo_name,
+        status=status,
+        details=details,
+    )
 
 
 def _verify_ownership(gh: Github, username: str, repo_name: str):
