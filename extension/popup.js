@@ -144,55 +144,43 @@ function showResult(data, username) {
   const result = $('result');
   result.classList.remove('hidden');
 
-  const score = data.overall_match_pct || 0;
+  // Overall score from /api/analyze response
+  const score = Math.round(data.overall_score || 0);
   result.querySelector('.score-display').textContent = score + '/100';
   result.querySelector('.score-display').style.color =
-    score >= 75 ? '#4ade80' : score >= 50 ? '#eab308' : '#f87171';
+    score >= 70 ? '#4ade80' : score >= 40 ? '#fbbf24' : '#f87171';
 
-  const prep = data.prep || {};
-  const summaryParts = [];
-  if (prep.technical_questions?.length) summaryParts.push(`${prep.technical_questions.length} technical questions`);
-  if (prep.coding_challenges?.length) summaryParts.push(`${prep.coding_challenges.length} coding challenges`);
-  if (prep.gap_coverage_questions?.length) summaryParts.push(`${prep.gap_coverage_questions.length} gap areas`);
-  result.querySelector('.summary').textContent = summaryParts.join(' · ') || 'Analysis complete';
+  // Category breakdown bars — real GitPulse scoring categories
+  const categories = data.category_scores || {};
+  const labels = {
+    skills_match: { name: 'Skills Match', max: 40 },
+    project_relevance: { name: 'Project Relevance', max: 25 },
+    readme_quality: { name: 'README Quality', max: 15 },
+    activity_level: { name: 'Activity Level', max: 10 },
+    profile_completeness: { name: 'Profile Completeness', max: 10 },
+  };
 
-  // Breakdown bars
   const breakdown = $('breakdown');
   breakdown.innerHTML = '';
-  const categories = [
-    { label: 'Technical Qs', count: (prep.technical_questions || []).length, max: 7 },
-    { label: 'Behavioral Qs', count: (prep.behavioral_questions || []).length, max: 5 },
-    { label: 'Coding Challenges', count: (prep.coding_challenges || []).length, max: 5 },
-    { label: 'Gap Areas', count: (prep.gap_coverage_questions || []).length, max: 4 },
-  ];
-  categories.forEach(({ label, count, max }) => {
-    const pct = Math.round((count / max) * 100);
+  Object.entries(labels).forEach(([key, { name, max }]) => {
+    const val = Math.round(categories[key] || 0);
+    const pct = Math.round((val / max) * 100);
     const level = pct >= 70 ? 'high' : pct >= 40 ? 'mid' : 'low';
     breakdown.innerHTML += `
       <div class="bar-row">
-        <span class="bar-label">${label}</span>
+        <span class="bar-label">${name}</span>
         <div class="bar-track"><div class="bar-fill ${level}" style="width:${pct}%"></div></div>
-        <span class="bar-score">${count}</span>
+        <span class="bar-score">${val}/${max}</span>
       </div>`;
   });
 
-  // Gaps
-  const gapItems = prep.gap_coverage_questions || [];
-  if (gapItems.length > 0) {
-    $('gaps').classList.remove('hidden');
-    $('gapList').innerHTML = gapItems.map((g) => `<li>${g.gap || g.question}</li>`).join('');
-  } else {
-    $('gaps').classList.add('hidden');
-  }
+  // Summary line
+  result.querySelector('.summary').textContent =
+    `${data.repos_count || 0} repos analyzed · ${Object.keys(categories).length} categories scored`;
 
-  // Strengths
-  const skills = (prep.technical_questions || []).map((q) => q.skill_tested).filter(Boolean).slice(0, 5);
-  if (skills.length > 0) {
-    $('strengths').classList.remove('hidden');
-    $('strengthList').innerHTML = skills.map((s) => `<li>${s}</li>`).join('');
-  } else {
-    $('strengths').classList.add('hidden');
-  }
+  // Hide interview-prep sections (not applicable for analyze response)
+  $('gaps').classList.add('hidden');
+  $('strengths').classList.add('hidden');
 
   // View full report button
   $('view-full').onclick = () => {

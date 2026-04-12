@@ -133,11 +133,18 @@ class AnalyzeRequest(BaseModel):
 async def analyze_post(username: str, request: AnalyzeRequest, role_category: str = "other"):
     jd = request.jd_text or None
     result = await analyze_and_score(username, job_description=jd, role_category=role_category)
+    score = result["score"]
+    # Flatten category scores for the Chrome extension
+    category_scores = {}
+    for cat, data in score.get("breakdown", {}).items():
+        category_scores[cat] = data.get("score", data) if isinstance(data, dict) else data
     return {
         "username": username,
         "profile": result["profile"],
         "repos_count": len(result["repos"]),
-        "score": result["score"],
+        "overall_score": score.get("total_score", 0),
+        "category_scores": category_scores,
+        "score": score,
         "snapshot": result["snapshot"],
     }
 
