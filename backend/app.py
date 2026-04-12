@@ -9,6 +9,7 @@ from datetime import date
 from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from backend.config import validate
 
@@ -124,8 +125,25 @@ async def health():
 from backend.services.analyzer import analyze_and_score  # noqa: E402
 
 
+class AnalyzeRequest(BaseModel):
+    jd_text: str = ""
+
+
+@app.post("/api/analyze/{username}")
+async def analyze_post(username: str, request: AnalyzeRequest, role_category: str = "other"):
+    jd = request.jd_text or None
+    result = await analyze_and_score(username, job_description=jd, role_category=role_category)
+    return {
+        "username": username,
+        "profile": result["profile"],
+        "repos_count": len(result["repos"]),
+        "score": result["score"],
+        "snapshot": result["snapshot"],
+    }
+
+
 @app.get("/api/analyze/{username}")
-async def analyze(username: str, role_category: str = "other"):
+async def analyze_get(username: str, role_category: str = "other"):
     result = await analyze_and_score(username, role_category=role_category)
     return {
         "username": username,
@@ -148,7 +166,6 @@ async def score(username: str, job_description: str = None, role_category: str =
 # ── Phase 3: Job scanning ────────────────────────────────────────
 from backend.services.job_board_scanner import fetch_simplify_jobs, filter_jobs  # noqa: E402
 from backend.routes.scan_jobs import post_scan_jobs, get_scan_jobs_status  # noqa: E402
-from pydantic import BaseModel  # noqa: E402
 from typing import Optional  # noqa: E402
 
 
