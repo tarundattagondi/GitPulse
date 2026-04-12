@@ -1,13 +1,13 @@
 // Content script: extracts job description text from supported job sites.
-// Each site has specific selectors with fallback to generic extraction.
+// Auto-injected on matched hosts via manifest.json content_scripts.
+// Also responds to messages from popup.js.
 
-function extractJDText() {
+function extractJD() {
   const hostname = window.location.hostname;
 
   // LinkedIn
   if (hostname.includes('linkedin.com')) {
     try {
-      // Try multiple LinkedIn selectors (layout changes frequently)
       const selectors = [
         '.jobs-description__content',
         '.jobs-box__html-content',
@@ -71,7 +71,7 @@ function extractJDText() {
     } catch (e) { /* fall through */ }
   }
 
-  // Generic fallback: try common job description containers
+  // Generic fallback
   try {
     const genericSelectors = [
       '[class*="description"]',
@@ -87,7 +87,7 @@ function extractJDText() {
     }
   } catch (e) { /* fall through */ }
 
-  // Last resort: grab the body text
+  // Last resort: body text
   const bodyText = document.body?.innerText || '';
   if (bodyText.length > 200) {
     return bodyText.substring(0, 8000);
@@ -96,11 +96,10 @@ function extractJDText() {
   return null;
 }
 
-// Listen for messages from popup
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'extractJD') {
-    const jdText = extractJDText();
-    sendResponse({ jdText });
+// Message listener for popup.js
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.type === 'GET_JD') {
+    sendResponse({ jd: extractJD() });
   }
   return true; // keep channel open for async
 });

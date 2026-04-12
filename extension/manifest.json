@@ -1,16 +1,18 @@
 {
   "manifest_version": 3,
   "name": "GitPulse — Job Match Scorer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Score your GitHub profile against any job description with one click.",
-  "permissions": ["activeTab", "storage"],
+  "permissions": ["activeTab", "storage", "scripting"],
   "host_permissions": [
-    "https://www.linkedin.com/*",
-    "https://linkedin.com/*",
+    "https://*.linkedin.com/*",
+    "https://*.greenhouse.io/*",
     "https://boards.greenhouse.io/*",
     "https://job-boards.greenhouse.io/*",
     "https://jobs.lever.co/*",
+    "https://*.lever.co/*",
     "https://jobs.ashbyhq.com/*",
+    "https://*.ashbyhq.com/*",
     "https://gitpulse-api.up.railway.app/*"
   ],
   "action": {
@@ -32,8 +34,7 @@
   "content_scripts": [
     {
       "matches": [
-        "https://www.linkedin.com/jobs/*",
-        "https://linkedin.com/jobs/*",
+        "https://*.linkedin.com/*",
         "https://boards.greenhouse.io/*",
         "https://job-boards.greenhouse.io/*",
         "https://jobs.lever.co/*",

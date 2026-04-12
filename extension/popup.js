@@ -4,7 +4,7 @@ const API_BASE = 'https://gitpulse-api.up.railway.app';
 const $ = (id) => document.getElementById(id);
 
 document.addEventListener('DOMContentLoaded', async () => {
-  // Restore saved username
+  // Restore saved username from chrome.storage.local
   const stored = await chrome.storage.local.get('gitpulse_username');
   if (stored.gitpulse_username) {
     $('username').value = stored.gitpulse_username;
@@ -20,7 +20,7 @@ async function handleScore() {
     return;
   }
 
-  // Save username
+  // Save username to chrome.storage.local
   await chrome.storage.local.set({ gitpulse_username: username });
 
   // Disable button
@@ -29,23 +29,32 @@ async function handleScore() {
   showStatus('Extracting job description from page...', 'loading');
 
   try {
-    // Get JD text from content script
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) throw new Error('No active tab found.');
 
-    let jdText;
+    // Try messaging the content script first (auto-injected on matched hosts)
+    let jdText = null;
     try {
-      const response = await chrome.tabs.sendMessage(tab.id, { action: 'extractJD' });
-      jdText = response?.jdText;
+      const response = await chrome.tabs.sendMessage(tab.id, { type: 'GET_JD' });
+      jdText = response?.jd;
     } catch {
-      // Content script not injected — try injecting it
-      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
-      const response = await chrome.tabs.sendMessage(tab.id, { action: 'extractJD' });
-      jdText = response?.jdText;
+      // Content script not present — inject via chrome.scripting (MV3 API)
+    }
+
+    // Fallback: use chrome.scripting.executeScript to extract page text directly
+    if (!jdText) {
+      const [{ result }] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => document.body.innerText,
+      });
+      jdText = result;
     }
 
     if (!jdText || jdText.length < 50) {
-      throw new Error('Could not extract job description from this page. Try a job listing page on LinkedIn, Greenhouse, Lever, or Ashby.');
+      throw new Error(
+        'Could not extract job description from this page. ' +
+        'Try a job listing page on LinkedIn, Greenhouse, Lever, or Ashby.'
+      );
     }
 
     showStatus(`Scoring ${username} against this JD...`, 'loading');
