@@ -22,12 +22,8 @@ app = FastAPI(
 # ── CORS ──────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "https://*.vercel.app",  # Replace with actual Vercel domain
-    ],
-    allow_credentials=True,
+    allow_origin_regex=r"https?://(localhost(:\d+)?|.*\.vercel\.app|.*\.up\.railway\.app)|chrome-extension://.*",
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
