@@ -4,44 +4,65 @@ const API_BASE = 'http://localhost:8000';
 const $ = (id) => document.getElementById(id);
 
 document.addEventListener('DOMContentLoaded', async () => {
-  // Restore saved username from chrome.storage.local
   const stored = await chrome.storage.local.get('gitpulse_username');
   if (stored.gitpulse_username) {
     $('username').value = stored.gitpulse_username;
   }
-
-  $('scoreBtn').addEventListener('click', handleScore);
+  $('score-btn').addEventListener('click', handleScore);
 });
+
+// ── Progress stepper ────────────────────────────────────────────
+
+function advanceStep(n) {
+  document.querySelectorAll('.step').forEach((el) => {
+    const step = parseInt(el.dataset.step);
+    el.classList.remove('active', 'done');
+    if (step < n) el.classList.add('done');
+    else if (step === n) el.classList.add('active');
+  });
+}
+
+function completeAllSteps() {
+  document.querySelectorAll('.step').forEach((el) => {
+    el.classList.remove('active');
+    el.classList.add('done');
+  });
+}
+
+// ── Main handler ────────────────────────────────────────────────
 
 async function handleScore() {
   const username = $('username').value.trim();
   if (!username) {
-    showStatus('Enter your GitHub username.', 'error');
+    showError('Enter your GitHub username.');
     return;
   }
 
-  // Save username to chrome.storage.local
   await chrome.storage.local.set({ gitpulse_username: username });
 
-  // Disable button
-  $('scoreBtn').disabled = true;
-  $('results').classList.add('hidden');
-  showStatus('Extracting job description from page...', 'loading');
+  // Reset UI
+  $('score-btn').disabled = true;
+  $('result').classList.add('hidden');
+  $('error-box').classList.add('hidden');
+  $('progress').classList.remove('hidden');
 
+  // Step 1: Extract JD
+  advanceStep(1);
+
+  let jdText = null;
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) throw new Error('No active tab found.');
 
-    // Try messaging the content script first (auto-injected on matched hosts)
-    let jdText = null;
+    // Try content script first
     try {
       const response = await chrome.tabs.sendMessage(tab.id, { type: 'GET_JD' });
       jdText = response?.jd;
     } catch {
-      // Content script not present — inject via chrome.scripting (MV3 API)
+      // Content script not present
     }
 
-    // Fallback: use chrome.scripting.executeScript to extract page text directly
+    // Fallback: scripting API
     if (!jdText) {
       const [{ result }] = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
@@ -52,21 +73,38 @@ async function handleScore() {
 
     if (!jdText || jdText.length < 50) {
       throw new Error(
-        'Could not extract job description from this page. ' +
-        'Try a job listing page on LinkedIn, Greenhouse, Lever, or Ashby.'
+        'Could not extract job description. Try a job listing on LinkedIn, Greenhouse, Lever, or Ashby.'
       );
     }
+  } catch (err) {
+    showError(err.message);
+    return;
+  }
 
-    showStatus(`Scoring ${username} against this JD...`, 'loading');
+  // Steps 2-5: simulated progression while real API call runs
+  const timers = [
+    setTimeout(() => advanceStep(2), 500),
+    setTimeout(() => advanceStep(3), 5000),
+    setTimeout(() => advanceStep(4), 15000),
+    setTimeout(() => advanceStep(5), 25000),
+  ];
 
-    // Call GitPulse backend — POST /api/interview-prep {username, jd_text}
+  // API call with 60s timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+  try {
     const url = `${API_BASE}/api/interview-prep`;
     console.log('GitPulse POST:', url);
+
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, jd_text: jdText.substring(0, 5000) }),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
     console.log('GitPulse status:', res.status);
 
     if (!res.ok) {
@@ -74,50 +112,60 @@ async function handleScore() {
       console.error('GitPulse error response:', errText);
       let errMsg;
       try { errMsg = JSON.parse(errText).message; } catch { errMsg = errText; }
-      showStatus(`Backend ${res.status}: ${errMsg}`, 'error');
-      return;
+      throw new Error(`Backend ${res.status}: ${errMsg}`);
     }
 
     const data = await res.json();
     console.log('GitPulse response:', JSON.stringify(data).substring(0, 200));
-    showResults(data);
-    showStatus('Analysis complete!', 'success');
+
+    // Mark all steps done, then show result
+    timers.forEach(clearTimeout);
+    completeAllSteps();
+    setTimeout(() => showResult(data, username), 400);
 
   } catch (err) {
-    showStatus(err.message, 'error');
+    clearTimeout(timeoutId);
+    timers.forEach(clearTimeout);
+
+    if (err.name === 'AbortError') {
+      showError('Request timed out after 60 seconds. The backend may be slow — try again.');
+    } else {
+      showError(err.message);
+    }
   } finally {
-    $('scoreBtn').disabled = false;
+    $('score-btn').disabled = false;
   }
 }
 
-function showStatus(msg, type) {
-  const el = $('status');
-  el.textContent = msg;
-  el.className = `status ${type}`;
-  el.classList.remove('hidden');
-}
+// ── Result display ──────────────────────────────────────────────
 
-function showResults(data) {
-  const results = $('results');
-  results.classList.remove('hidden');
+function showResult(data, username) {
+  $('progress').classList.add('hidden');
 
-  // Overall match
+  const result = $('result');
+  result.classList.remove('hidden');
+
   const score = data.overall_match_pct || 0;
-  $('scoreValue').textContent = score;
-  $('scoreValue').style.color = score >= 75 ? '#22c55e' : score >= 50 ? '#eab308' : '#ef4444';
+  result.querySelector('.score-display').textContent = score + '/100';
+  result.querySelector('.score-display').style.color =
+    score >= 75 ? '#4ade80' : score >= 50 ? '#eab308' : '#f87171';
 
-  // Breakdown from prep data
+  const prep = data.prep || {};
+  const summaryParts = [];
+  if (prep.technical_questions?.length) summaryParts.push(`${prep.technical_questions.length} technical questions`);
+  if (prep.coding_challenges?.length) summaryParts.push(`${prep.coding_challenges.length} coding challenges`);
+  if (prep.gap_coverage_questions?.length) summaryParts.push(`${prep.gap_coverage_questions.length} gap areas`);
+  result.querySelector('.summary').textContent = summaryParts.join(' · ') || 'Analysis complete';
+
+  // Breakdown bars
   const breakdown = $('breakdown');
   breakdown.innerHTML = '';
-  const prep = data.prep || {};
-
   const categories = [
     { label: 'Technical Qs', count: (prep.technical_questions || []).length, max: 7 },
     { label: 'Behavioral Qs', count: (prep.behavioral_questions || []).length, max: 5 },
     { label: 'Coding Challenges', count: (prep.coding_challenges || []).length, max: 5 },
     { label: 'Gap Areas', count: (prep.gap_coverage_questions || []).length, max: 4 },
   ];
-
   categories.forEach(({ label, count, max }) => {
     const pct = Math.round((count / max) * 100);
     const level = pct >= 70 ? 'high' : pct >= 40 ? 'mid' : 'low';
@@ -138,7 +186,7 @@ function showResults(data) {
     $('gaps').classList.add('hidden');
   }
 
-  // Strengths — pull from technical questions skill_tested
+  // Strengths
   const skills = (prep.technical_questions || []).map((q) => q.skill_tested).filter(Boolean).slice(0, 5);
   if (skills.length > 0) {
     $('strengths').classList.remove('hidden');
@@ -146,4 +194,20 @@ function showResults(data) {
   } else {
     $('strengths').classList.add('hidden');
   }
+
+  // View full report button
+  $('view-full').onclick = () => {
+    chrome.tabs.create({ url: `https://git-pulse-ten.vercel.app/results?username=${username}` });
+  };
+}
+
+// ── Error display ───────────────────────────────────────────────
+
+function showError(msg) {
+  $('progress').classList.add('hidden');
+  $('result').classList.add('hidden');
+  const errorBox = $('error-box');
+  errorBox.textContent = msg;
+  errorBox.classList.remove('hidden');
+  $('score-btn').disabled = false;
 }
