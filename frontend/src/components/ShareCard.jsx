@@ -1,10 +1,15 @@
 import { Share2, Copy, Check } from 'lucide-react';
 import { useState } from 'react';
 
-export default function ShareCard({ username, score, matchPct }) {
+export default function ShareCard({ username, score, matchPct, actions = [] }) {
   const [copied, setCopied] = useState(false);
 
-  const text = `GitPulse Profile Score: ${score}/100${matchPct ? ` | Job Match: ${matchPct}%` : ''}\nAnalyzed with GitPulse - github.com/tarundattagondi/GitPulse`;
+  let text = `GitPulse Profile Score: ${score}/100${matchPct ? ` | Job Match: ${matchPct}%` : ''}`;
+  if (actions.length > 0) {
+    text += '\n\nTop priorities:';
+    actions.forEach((a, i) => { text += `\n${i + 1}. ${a}`; });
+  }
+  text += '\n\nAnalyzed with GitPulse - github.com/tarundattagondi/GitPulse';
 
   const handleCopy = () => {
     navigator.clipboard.writeText(text);

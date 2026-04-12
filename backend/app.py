@@ -131,22 +131,78 @@ class AnalyzeRequest(BaseModel):
 
 @app.post("/api/analyze/{username}")
 async def analyze_post(username: str, request: AnalyzeRequest, role_category: str = "other"):
+    import asyncio as _aio
+    from datetime import datetime, timezone
+    from backend.storage import read_json, write_json
+    from backend.config import DATA_DIR
+
     jd = request.jd_text or None
     result = await analyze_and_score(username, job_description=jd, role_category=role_category)
     score = result["score"]
-    # Flatten category scores for the Chrome extension
+
+    # Flatten category scores
     category_scores = {}
-    for cat, data in score.get("breakdown", {}).items():
-        category_scores[cat] = data.get("score", data) if isinstance(data, dict) else data
-    return {
+    for cat, d in score.get("breakdown", {}).items():
+        category_scores[cat] = d.get("score", d) if isinstance(d, dict) else d
+
+    # Run JD analysis, matching, and recommendations if jd_text provided
+    jd_analysis = None
+    match_result = None
+    recommendations = None
+    if jd:
+        loop = _aio.get_event_loop()
+        from backend.services.jd_analyzer import analyze_jd
+        from backend.services.matcher import match_profile_to_jd
+        from backend.services.recommender import generate_recommendations
+
+        github_data = {"profile": result["profile"], "repos": result["repos"], "readmes": result["readmes"]}
+        jd_analysis = await loop.run_in_executor(None, analyze_jd, jd)
+        match_result = await loop.run_in_executor(None, match_profile_to_jd, github_data, jd_analysis)
+        recommendations = await loop.run_in_executor(None, generate_recommendations, github_data, jd_analysis, match_result)
+
+    total_stars = sum(r.get("stars", 0) for r in result["repos"])
+
+    full_result = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "username": username,
-        "profile": result["profile"],
-        "repos_count": len(result["repos"]),
         "overall_score": score.get("total_score", 0),
         "category_scores": category_scores,
         "score": score,
+        "jd_analysis": jd_analysis,
+        "match_result": match_result,
+        "recommendations": recommendations,
+        "github_summary": {
+            "profile": result["profile"],
+            "repos": result["repos"][:15],
+            "total_stars": total_stars,
+            "repo_count": len(result["repos"]),
+        },
         "snapshot": result["snapshot"],
     }
+
+    # Persist full analysis
+    analyses_path = DATA_DIR / "full_analyses.json"
+    analyses = read_json(analyses_path)
+    if username not in analyses:
+        analyses[username] = {"latest": None, "history": []}
+    analyses[username]["latest"] = full_result
+    history = analyses[username].get("history", [])
+    history.append(full_result)
+    analyses[username]["history"] = history[-10:]
+    write_json(analyses_path, analyses)
+
+    return full_result
+
+
+@app.get("/api/analysis/{username}/latest")
+async def get_latest_analysis(username: str):
+    from backend.storage import read_json
+    from backend.config import DATA_DIR
+    data = read_json(DATA_DIR / "full_analyses.json")
+    user_data = data.get(username)
+    if not user_data or not user_data.get("latest"):
+        raise HTTPException(status_code=404, detail="No analysis found. Run one first.")
+    return user_data["latest"]
 
 
 @app.get("/api/analyze/{username}")

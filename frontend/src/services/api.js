@@ -50,4 +50,7 @@ export const getBenchmark = (username, company) =>
 export const getInterviewPrep = (username, jdText) =>
   api.post('/api/interview-prep', { username, jd_text: jdText });
 
+export const getLatestAnalysis = (username) =>
+  api.get(`/api/analysis/${username}/latest`);
+
 export default api;
