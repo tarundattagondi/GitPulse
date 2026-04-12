@@ -1,15 +1,84 @@
-import { useLocation, useNavigate, Link } from 'react-router-dom';
-import { GitBranch, ArrowLeft } from 'lucide-react';
+import { useLocation, useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { GitBranch, ArrowLeft, Loader2 } from 'lucide-react';
+import { analyzeProfile, getProgress } from '../services/api';
 import MatchGauge from '../components/MatchGauge';
 import ScoreBreakdown from '../components/ScoreBreakdown';
-import RepoCard from '../components/RepoCard';
 import ShareCard from '../components/ShareCard';
 
 export default function Results() {
   const { state } = useLocation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
-  if (!state?.data) {
+  const [data, setData] = useState(state?.data || null);
+  const [username, setUsername] = useState(state?.username || searchParams.get('username') || '');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    // If we already have data from navigation state, don't fetch
+    if (data) return;
+
+    const usernameParam = searchParams.get('username');
+    if (!usernameParam) return;
+
+    setUsername(usernameParam);
+    setLoading(true);
+
+    // Try progress endpoint first for the latest snapshot
+    getProgress(usernameParam)
+      .then((res) => {
+        const snapshots = res.data?.snapshots || [];
+        if (snapshots.length > 0) {
+          const latest = snapshots[snapshots.length - 1];
+          setData({
+            profile: { login: usernameParam, name: usernameParam, html_url: `https://github.com/${usernameParam}` },
+            repos_count: latest.repo_count || 0,
+            score: {
+              total_score: latest.overall_score,
+              breakdown: latest.category_scores,
+            },
+            snapshot: latest,
+          });
+          setLoading(false);
+          return;
+        }
+        // No snapshots — run a fresh analysis
+        return analyzeProfile(usernameParam).then((res) => {
+          setData(res.data);
+          setLoading(false);
+        });
+      })
+      .catch((err) => {
+        setError(err.message || 'Failed to load analysis');
+        setLoading(false);
+      });
+  }, [searchParams, data]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 size={32} className="text-accent animate-spin mx-auto mb-3" />
+          <p className="text-text-muted">Loading analysis for {username}...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-danger mb-4">{error}</p>
+          <button onClick={() => navigate('/')} className="px-4 py-2 bg-accent text-white rounded-lg text-sm">Go home</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -20,8 +89,7 @@ export default function Results() {
     );
   }
 
-  const { profile, score, repos_count } = state.data;
-  const username = state.username;
+  const { profile, score, repos_count } = data;
 
   return (
     <div className="min-h-screen bg-bg-primary">
