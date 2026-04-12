@@ -8,7 +8,6 @@ from pathlib import Path
 
 import httpx
 
-from backend.config import GITHUB_TOKEN
 from backend.storage import read_json, write_json
 
 SIMPLIFY_URL = "https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/dev/README.md"

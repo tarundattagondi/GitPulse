@@ -5,7 +5,7 @@ import asyncio
 import uuid
 from datetime import datetime, timezone
 
-from backend.services.job_board_scanner import scan_jobs_for_user, fetch_simplify_jobs, filter_jobs
+from backend.services.job_board_scanner import scan_jobs_for_user
 from backend.storage import read_json, write_json
 from backend.config import DATA_DIR
 
