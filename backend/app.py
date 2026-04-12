@@ -1,8 +1,10 @@
 """FastAPI application — wires all endpoints from Phases 1-8."""
 
+import sys
 import time
 import logging
 import traceback
+from typing import Optional
 
 from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,13 +20,14 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# ── CORS ──────────────────────────────────────────────────────────
+# ── CORS — MUST be first middleware, before any routes ────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=r"https?://(localhost(:\d+)?|.*\.vercel\.app|.*\.up\.railway\.app)|chrome-extension://.*",
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # ── Logging ───────────────────────────────────────────────────────
@@ -32,20 +35,7 @@ logger = logging.getLogger("gitpulse")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 
-# ── Request logging middleware ────────────────────────────────────
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    start = time.time()
-    response = await call_next(request)
-    duration = time.time() - start
-    logger.info(
-        f"{request.method} {request.url.path} → {response.status_code} ({duration:.2f}s)"
-    )
-    return response
-
-
 # ── Rate limiter (Supabase-backed) ────────────────────────────────
-# 5 analyses per IP per day without API key, unlimited with X-Anthropic-Key
 DAILY_LIMIT = 5
 RATE_LIMITED_PREFIXES = [
     "/api/analyze", "/api/score", "/api/scan-jobs", "/api/tri-match",
@@ -54,33 +44,38 @@ RATE_LIMITED_PREFIXES = [
 
 
 @app.middleware("http")
-async def rate_limiter(request: Request, call_next):
-    # Never rate-limit CORS preflight requests
-    if request.method == "OPTIONS":
-        return await call_next(request)
-    path = request.url.path
-    if any(path.startswith(p) for p in RATE_LIMITED_PREFIXES):
-        api_key = request.headers.get("X-Anthropic-Key")
-        if not api_key:
-            client_ip = request.client.host if request.client else "unknown"
-            try:
-                from backend.storage import record_rate_hit, count_rate_hits
-                total = count_rate_hits(client_ip, hours=24)
-                if total >= DAILY_LIMIT:
-                    return JSONResponse(
-                        status_code=429,
-                        content={
-                            "error": "rate_limit_exceeded",
-                            "message": f"Daily limit of {DAILY_LIMIT} analyses exceeded. "
-                                       f"Pass X-Anthropic-Key header for unlimited access.",
-                            "limit": DAILY_LIMIT,
-                            "used": total,
-                        },
-                    )
-                record_rate_hit(client_ip, endpoint=path)
-            except Exception:
-                pass  # Don't block requests if rate limit DB is down
-    return await call_next(request)
+async def log_and_rate_limit(request: Request, call_next):
+    start = time.time()
+
+    # Skip rate limiting for OPTIONS (CORS preflight) and non-API paths
+    if request.method != "OPTIONS":
+        path = request.url.path
+        if any(path.startswith(p) for p in RATE_LIMITED_PREFIXES):
+            api_key = request.headers.get("X-Anthropic-Key")
+            if not api_key:
+                client_ip = request.client.host if request.client else "unknown"
+                try:
+                    from backend.storage import record_rate_hit, count_rate_hits
+                    total = count_rate_hits(client_ip, hours=24)
+                    if total >= DAILY_LIMIT:
+                        return JSONResponse(
+                            status_code=429,
+                            content={
+                                "error": "rate_limit_exceeded",
+                                "message": f"Daily limit of {DAILY_LIMIT} analyses exceeded. "
+                                           f"Pass X-Anthropic-Key header for unlimited access.",
+                                "limit": DAILY_LIMIT,
+                                "used": total,
+                            },
+                        )
+                    record_rate_hit(client_ip, endpoint=path)
+                except Exception:
+                    pass
+
+    response = await call_next(request)
+    duration = time.time() - start
+    logger.info(f"{request.method} {request.url.path} → {response.status_code} ({duration:.2f}s)")
+    return response
 
 
 # ── Global exception handlers ────────────────────────────────────
@@ -140,12 +135,10 @@ async def analyze_post(username: str, request: AnalyzeRequest, role_category: st
     result = await analyze_and_score(username, job_description=jd, role_category=role_category)
     score = result["score"]
 
-    # Flatten category scores
     category_scores = {}
     for cat, d in score.get("breakdown", {}).items():
         category_scores[cat] = d.get("score", d) if isinstance(d, dict) else d
 
-    # Run JD analysis, matching, and recommendations if jd_text provided
     jd_analysis = None
     match_result = None
     recommendations = None
@@ -179,7 +172,6 @@ async def analyze_post(username: str, request: AnalyzeRequest, role_category: st
         "snapshot": result["snapshot"],
     }
 
-    # Persist to Supabase
     from backend.storage import save_analysis
     save_analysis(
         username=username,
@@ -228,7 +220,6 @@ async def score(username: str, job_description: str = None, role_category: str =
 # ── Phase 3: Job scanning ────────────────────────────────────────
 from backend.services.job_board_scanner import fetch_simplify_jobs, filter_jobs  # noqa: E402
 from backend.routes.scan_jobs import post_scan_jobs, get_scan_jobs_status  # noqa: E402
-from typing import Optional  # noqa: E402
 
 
 class ScanJobsRequest(BaseModel):
@@ -352,3 +343,7 @@ async def interview_prep(req: InterviewPrepRequest):
 async def startup():
     validate()
     logger.info("GitPulse API started")
+
+
+# Startup confirmation for Railway logs
+print(f"GitPulse app loaded with {len(app.user_middleware)} middleware", file=sys.stderr)
