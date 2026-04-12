@@ -1,5 +1,6 @@
-# Data / output
+# Data / output (runtime-generated)
 data/
+!backend/data/company_benchmarks.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
