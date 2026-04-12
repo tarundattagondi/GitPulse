@@ -55,6 +55,9 @@ RATE_LIMITED_PREFIXES = [
 
 @app.middleware("http")
 async def rate_limiter(request: Request, call_next):
+    # Never rate-limit CORS preflight requests
+    if request.method == "OPTIONS":
+        return await call_next(request)
     path = request.url.path
     if any(path.startswith(p) for p in RATE_LIMITED_PREFIXES):
         api_key = request.headers.get("X-Anthropic-Key")
