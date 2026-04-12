@@ -1,5 +1,5 @@
-// Replace with your deployed backend URL
-const API_BASE = 'https://gitpulse-api.up.railway.app';
+// TODO: swap to Railway URL after deploy
+const API_BASE = 'http://localhost:8000';
 
 const $ = (id) => document.getElementById(id);
 
@@ -59,19 +59,27 @@ async function handleScore() {
 
     showStatus(`Scoring ${username} against this JD...`, 'loading');
 
-    // Call GitPulse backend
-    const res = await fetch(`${API_BASE}/api/interview-prep`, {
+    // Call GitPulse backend — POST /api/interview-prep {username, jd_text}
+    const url = `${API_BASE}/api/interview-prep`;
+    console.log('GitPulse POST:', url);
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, jd_text: jdText.substring(0, 5000) }),
     });
+    console.log('GitPulse status:', res.status);
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.message || `API error: ${res.status}`);
+      const errText = await res.text();
+      console.error('GitPulse error response:', errText);
+      let errMsg;
+      try { errMsg = JSON.parse(errText).message; } catch { errMsg = errText; }
+      showStatus(`Backend ${res.status}: ${errMsg}`, 'error');
+      return;
     }
 
     const data = await res.json();
+    console.log('GitPulse response:', JSON.stringify(data).substring(0, 200));
     showResults(data);
     showStatus('Analysis complete!', 'success');
 

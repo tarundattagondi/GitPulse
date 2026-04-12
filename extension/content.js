@@ -22,15 +22,17 @@ function extractJD() {
     } catch (e) { /* fall through */ }
   }
 
-  // Greenhouse
+  // Greenhouse (boards.greenhouse.io and job-boards.greenhouse.io)
   if (hostname.includes('greenhouse.io')) {
     try {
       const selectors = [
         '#content',
+        '.job__description',
         '.content',
         '#app_body',
         '[data-qa="job-description"]',
         '.job-post',
+        '[class*="description"]',
       ];
       for (const sel of selectors) {
         const el = document.querySelector(sel);
