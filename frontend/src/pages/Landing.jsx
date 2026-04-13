@@ -11,12 +11,14 @@ export default function Landing() {
   const handleAnalyze = (e) => {
     e.preventDefault();
     if (!username.trim()) return;
-    const params = new URLSearchParams({ username: username.trim() });
-    if (jdText.trim().length >= 50) params.set('jd', '1');
-    // Store JD in sessionStorage so Loading page can access it
-    if (jdText.trim()) sessionStorage.setItem('gitpulse_jd', jdText.trim());
-    else sessionStorage.removeItem('gitpulse_jd');
-    navigate(`/loading?${params.toString()}`);
+    const trimmedJd = (jdText || '').trim();
+    if (trimmedJd.length > 0) {
+      sessionStorage.setItem('gitpulse_jd', trimmedJd);
+    } else {
+      sessionStorage.removeItem('gitpulse_jd');
+    }
+    console.log('GitPulse: navigating to loading', { username: username.trim(), hasJd: trimmedJd.length > 0 });
+    navigate(`/loading?username=${encodeURIComponent(username.trim())}`);
   };
 
   const features = [

@@ -136,7 +136,13 @@ async def analyze_post(username: str, request: AnalyzeRequest, role_category: st
     mode = "jd_match" if has_jd else "profile_audit"
     jd = jd_text if has_jd else None
 
-    result = await analyze_and_score(username, job_description=jd, role_category=role_category)
+    logger.info(f"Analyze {username}: mode={mode}, jd_len={len(jd_text)}")
+
+    try:
+        result = await analyze_and_score(username, job_description=jd, role_category=role_category)
+    except Exception as e:
+        logger.error(f"Analyze failed for {username}: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {type(e).__name__}: {str(e)[:300]}")
     score = result["score"]
 
     category_scores = {}

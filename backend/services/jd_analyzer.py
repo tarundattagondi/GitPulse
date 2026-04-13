@@ -84,8 +84,11 @@ def _validate_jd_result(result: dict) -> dict:
     return result
 
 
-def analyze_jd(jd_text: str) -> dict:
-    """Analyze a job description and return structured data. Retries twice on parse failure."""
+def analyze_jd(jd_text: str) -> dict | None:
+    """Analyze a job description and return structured data. Retries twice on parse failure.
+    Returns None if jd_text is too short to be meaningful."""
+    if not jd_text or len(jd_text.strip()) < 50:
+        return None
     client = anthropic.Anthropic()
     last_error = None
 
