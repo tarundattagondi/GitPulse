@@ -168,6 +168,7 @@ async def analyze_post(username: str, request: AnalyzeRequest, role_category: st
             "repos": result["repos"][:15],
             "total_stars": total_stars,
             "repo_count": len(result["repos"]),
+            "commit_count_90d": result.get("commit_count_90d", 0),
         },
         "snapshot": result["snapshot"],
     }

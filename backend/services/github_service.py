@@ -140,9 +140,34 @@ async def fetch_commit_activity(username: str, repo_name: str) -> list[dict]:
 
 
 async def fetch_recent_commits(username: str, repos: list[dict], days: int = 90) -> int:
-    """Count total commits across repos in the last N days."""
-    since = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    since_iso = since.isoformat()
+    """Count commits authored by user across all repos in the last N days.
+
+    Uses GitHub's commit search API for a single accurate count instead
+    of looping per-repo (which burned rate limit and had a date bug).
+    """
+    from datetime import timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        resp = await client.get(
+            f"{GITHUB_API_BASE}/search/commits",
+            headers={
+                **github_headers(),
+                "Accept": "application/vnd.github.cloak-preview+json",
+            },
+            params={"q": f"author:{username} author-date:>={cutoff}"},
+        )
+        if resp.status_code != 200:
+            return 0
+        data = resp.json()
+        return data.get("total_count", 0)
+
+
+# Keep the old per-repo version as fallback
+async def fetch_recent_commits_per_repo(username: str, repos: list[dict], days: int = 90) -> int:
+    """Fallback: count commits per-repo if search API is unavailable."""
+    from datetime import timedelta
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
     total = 0
     async with httpx.AsyncClient() as client:
@@ -150,7 +175,7 @@ async def fetch_recent_commits(username: str, repos: list[dict], days: int = 90)
             data = await _get(
                 client,
                 f"{GITHUB_API_BASE}/repos/{username}/{repo['name']}/commits",
-                params={"author": username, "since": since_iso, "per_page": 100},
+                params={"author": username, "since": since, "per_page": 100},
             )
             if isinstance(data, list):
                 total += len(data)
