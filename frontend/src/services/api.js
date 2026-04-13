@@ -17,6 +17,9 @@ api.interceptors.response.use(
 export const analyzeProfile = (username, roleCategory = 'other') =>
   api.get(`/api/analyze/${username}`, { params: { role_category: roleCategory } });
 
+export const analyzeProfileWithJD = (username, jdText, roleCategory = 'other') =>
+  api.post(`/api/analyze/${username}?role_category=${roleCategory}`, { jd_text: jdText });
+
 export const scoreProfile = (username, jobDescription, roleCategory = 'other') =>
   api.get(`/api/score/${username}`, { params: { job_description: jobDescription, role_category: roleCategory } });
 

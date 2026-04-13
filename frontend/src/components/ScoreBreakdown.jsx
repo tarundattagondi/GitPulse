@@ -59,9 +59,27 @@ function friendlyReasoning(key, reasoning) {
   return result;
 }
 
-export default function ScoreBreakdown({ breakdown, username }) {
+const CATEGORY_LABELS = {
+  jd_match: {
+    skills_match: "Skills Match",
+    project_relevance: "Project Relevance",
+    readme_quality: "README Quality",
+    activity_level: "Activity Level",
+    profile_completeness: "Profile Completeness",
+  },
+  profile_audit: {
+    skills_match: "Skills Profile",
+    project_relevance: "Project Quality",
+    readme_quality: "README Quality",
+    activity_level: "Activity Level",
+    profile_completeness: "Profile Completeness",
+  },
+};
+
+export default function ScoreBreakdown({ breakdown, username, mode }) {
   if (!breakdown) return null;
   const categories = Object.entries(breakdown);
+  const labels = CATEGORY_LABELS[mode] || CATEGORY_LABELS.profile_audit;
 
   return (
     <div className="space-y-3">
@@ -69,7 +87,7 @@ export default function ScoreBreakdown({ breakdown, username }) {
         const score = data.score ?? data;
         const max = data.max ?? 100;
         const pct = Math.round((score / max) * 100);
-        const label = key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+        const label = labels[key] || key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
         const color = pct >= 75 ? 'bg-success' : pct >= 50 ? 'bg-warning' : 'bg-danger';
         const reasoning = friendlyReasoning(key, data.reasoning);
 

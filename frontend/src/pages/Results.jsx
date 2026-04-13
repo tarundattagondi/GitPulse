@@ -45,6 +45,7 @@ export default function Results() {
   const totalStars = data.github_summary?.total_stars || 0;
   const overallScore = data.overall_score || score.total_score || 0;
   const categoryScores = data.category_scores || {};
+  const mode = data.mode || (data.jd_analysis ? 'jd_match' : 'profile_audit');
   const jdAnalysis = data.jd_analysis;
   const matchResult = data.match_result;
   const recs = data.recommendations;
@@ -69,14 +70,27 @@ export default function Results() {
           </div>
         </div>
 
+        {/* Mode indicator */}
+        {mode === 'profile_audit' && (
+          <div className="rounded-lg p-3 text-sm" style={{ background: 'rgba(180, 140, 40, 0.1)', border: '1px solid rgba(180, 140, 40, 0.25)', color: '#e2c56b' }}>
+            <strong>Profile audit mode</strong> — General assessment of your GitHub profile. For a job-specific match score, paste a job description on the home page.
+          </div>
+        )}
+        {mode === 'jd_match' && jdAnalysis && (
+          <div className="rounded-lg p-3 text-sm" style={{ background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.25)', color: '#a5b4fc' }}>
+            <strong>Matched against:</strong> {jdAnalysis.role_category?.replace(/_/g, ' ')} role
+            {jdAnalysis.required_skills?.length > 0 && ` · Required: ${jdAnalysis.required_skills.slice(0, 5).join(', ')}`}
+          </div>
+        )}
+
         {/* Score + Breakdown */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="flex justify-center relative">
-            <MatchGauge score={overallScore} label="Overall Score" />
+            <MatchGauge score={overallScore} label={mode === 'jd_match' ? 'Match Score' : 'Profile Score'} />
           </div>
           <div className="md:col-span-2 p-4 rounded-lg bg-bg-secondary border border-border">
             <h3 className="text-sm font-medium text-text-primary mb-3">Score Breakdown</h3>
-            <ScoreBreakdown breakdown={score.breakdown || categoryScores} username={username} />
+            <ScoreBreakdown breakdown={score.breakdown || categoryScores} username={username} mode={mode} />
           </div>
         </div>
 

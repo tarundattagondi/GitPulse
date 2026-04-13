@@ -1,14 +1,22 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { GitBranch, Search, BarChart3, Briefcase, FileText, Target } from 'lucide-react';
+import { GitBranch, Search, BarChart3, Briefcase, FileText, Target, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function Landing() {
   const [username, setUsername] = useState('');
+  const [jdText, setJdText] = useState('');
+  const [showJd, setShowJd] = useState(false);
   const navigate = useNavigate();
 
   const handleAnalyze = (e) => {
     e.preventDefault();
-    if (username.trim()) navigate(`/loading?username=${username.trim()}`);
+    if (!username.trim()) return;
+    const params = new URLSearchParams({ username: username.trim() });
+    if (jdText.trim().length >= 50) params.set('jd', '1');
+    // Store JD in sessionStorage so Loading page can access it
+    if (jdText.trim()) sessionStorage.setItem('gitpulse_jd', jdText.trim());
+    else sessionStorage.removeItem('gitpulse_jd');
+    navigate(`/loading?${params.toString()}`);
   };
 
   const features = [
@@ -40,18 +48,40 @@ export default function Landing() {
           scans live internships, and opens real PRs to improve your profile.
         </p>
 
-        <form onSubmit={handleAnalyze} className="flex w-full max-w-md gap-2">
-          <div className="flex-1 relative">
-            <GitBranch size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-            <input
-              type="text" value={username} onChange={(e) => setUsername(e.target.value)}
-              placeholder="GitHub username"
-              className="w-full pl-9 pr-4 py-2.5 rounded-lg bg-bg-secondary border border-border focus:border-accent outline-none text-text-primary placeholder-text-muted"
-            />
+        <form onSubmit={handleAnalyze} className="w-full max-w-md space-y-3">
+          <div className="flex gap-2">
+            <div className="flex-1 relative">
+              <GitBranch size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+              <input
+                type="text" value={username} onChange={(e) => setUsername(e.target.value)}
+                placeholder="GitHub username"
+                className="w-full pl-9 pr-4 py-2.5 rounded-lg bg-bg-secondary border border-border focus:border-accent outline-none text-text-primary placeholder-text-muted"
+              />
+            </div>
+            <button type="submit" className="px-5 py-2.5 rounded-lg bg-accent hover:bg-accent-dark text-white font-medium flex items-center gap-1">
+              <Search size={16} /> Analyze
+            </button>
           </div>
-          <button type="submit" className="px-5 py-2.5 rounded-lg bg-accent hover:bg-accent-dark text-white font-medium flex items-center gap-1">
-            <Search size={16} /> Analyze
+
+          <button type="button" onClick={() => setShowJd(!showJd)}
+            className="flex items-center gap-1 text-xs text-text-muted hover:text-accent-light mx-auto">
+            {showJd ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            {showJd ? 'Hide job description' : 'Add a job description for tailored matching'}
           </button>
+
+          {showJd && (
+            <div className="space-y-1.5">
+              <textarea
+                value={jdText} onChange={(e) => setJdText(e.target.value)}
+                placeholder="Paste a job description for a tailored match score, or leave blank for a general profile audit..."
+                rows={5}
+                className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border focus:border-accent outline-none text-text-primary placeholder-text-muted text-sm resize-y"
+              />
+              <p className="text-xs text-text-muted text-center">
+                Profile audits give you a baseline score. Job-specific matches tell you which skills to focus on.
+              </p>
+            </div>
+          )}
         </form>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-16 w-full max-w-4xl">

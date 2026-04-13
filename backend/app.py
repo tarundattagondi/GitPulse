@@ -131,7 +131,11 @@ class AnalyzeRequest(BaseModel):
 async def analyze_post(username: str, request: AnalyzeRequest, role_category: str = "other"):
     import asyncio as _aio
 
-    jd = request.jd_text or None
+    jd_text = (request.jd_text or "").strip()
+    has_jd = len(jd_text) >= 50
+    mode = "jd_match" if has_jd else "profile_audit"
+    jd = jd_text if has_jd else None
+
     result = await analyze_and_score(username, job_description=jd, role_category=role_category)
     score = result["score"]
 
@@ -142,7 +146,7 @@ async def analyze_post(username: str, request: AnalyzeRequest, role_category: st
     jd_analysis = None
     match_result = None
     recommendations = None
-    if jd:
+    if has_jd:
         loop = _aio.get_event_loop()
         from backend.services.jd_analyzer import analyze_jd
         from backend.services.matcher import match_profile_to_jd
@@ -157,6 +161,7 @@ async def analyze_post(username: str, request: AnalyzeRequest, role_category: st
 
     full_result = {
         "username": username,
+        "mode": mode,
         "overall_score": score.get("total_score", 0),
         "category_scores": category_scores,
         "score": score,
