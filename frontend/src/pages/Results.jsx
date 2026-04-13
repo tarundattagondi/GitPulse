@@ -76,7 +76,7 @@ export default function Results() {
           </div>
           <div className="md:col-span-2 p-4 rounded-lg bg-bg-secondary border border-border">
             <h3 className="text-sm font-medium text-text-primary mb-3">Score Breakdown</h3>
-            <ScoreBreakdown breakdown={score.breakdown || categoryScores} />
+            <ScoreBreakdown breakdown={score.breakdown || categoryScores} username={username} />
           </div>
         </div>
 
