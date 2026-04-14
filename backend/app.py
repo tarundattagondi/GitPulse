@@ -127,6 +127,11 @@ class AnalyzeRequest(BaseModel):
     jd_text: str = ""
 
 
+@app.get("/api/warmup")
+async def warmup():
+    return {"status": "warm"}
+
+
 @app.post("/api/analyze/{username}")
 async def analyze_post(username: str, request: AnalyzeRequest, role_category: str = "other"):
     import asyncio as _aio
@@ -139,7 +144,15 @@ async def analyze_post(username: str, request: AnalyzeRequest, role_category: st
     logger.info(f"Analyze {username}: mode={mode}, jd_len={len(jd_text)}")
 
     try:
-        result = await analyze_and_score(username, job_description=jd, role_category=role_category)
+        # Run GitHub fetch and JD analysis in PARALLEL when JD is present
+        if has_jd:
+            from backend.services.jd_analyzer import analyze_jd
+            loop = _aio.get_event_loop()
+            score_task = analyze_and_score(username, job_description=jd, role_category=role_category)
+            jd_task = loop.run_in_executor(None, analyze_jd, jd)
+            result, jd_analysis = await _aio.gather(score_task, jd_task)
+        else:
+            result = await analyze_and_score(username, job_description=None, role_category=role_category)
     except Exception as e:
         logger.error(f"Analyze failed for {username}: {type(e).__name__}: {e}")
         raise HTTPException(status_code=500, detail=f"Analysis failed: {type(e).__name__}: {str(e)[:300]}")
@@ -149,17 +162,15 @@ async def analyze_post(username: str, request: AnalyzeRequest, role_category: st
     for cat, d in score.get("breakdown", {}).items():
         category_scores[cat] = d.get("score", d) if isinstance(d, dict) else d
 
-    jd_analysis = None
+    jd_analysis = jd_analysis if has_jd else None
     match_result = None
     recommendations = None
-    if has_jd:
+    if has_jd and jd_analysis:
         loop = _aio.get_event_loop()
-        from backend.services.jd_analyzer import analyze_jd
         from backend.services.matcher import match_profile_to_jd
         from backend.services.recommender import generate_recommendations
 
         github_data = {"profile": result["profile"], "repos": result["repos"], "readmes": result["readmes"]}
-        jd_analysis = await loop.run_in_executor(None, analyze_jd, jd)
         match_result = await loop.run_in_executor(None, match_profile_to_jd, github_data, jd_analysis)
         recommendations = await loop.run_in_executor(None, generate_recommendations, github_data, jd_analysis, match_result)
 

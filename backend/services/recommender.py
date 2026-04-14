@@ -142,52 +142,65 @@ def _generate_readme_rewrites(client: anthropic.Anthropic, context: str, github_
             readme = readmes.get(r["name"])
             if readme and len(readme) < 500 and r not in candidates:
                 candidates.append(r)
-    candidates = candidates[:3]
+    candidates = candidates[:4]
 
     if not candidates:
         return []
 
     rewrites = []
-    for repo in candidates:
-        langs = ", ".join(repo.get("languages", {}).keys()) or repo.get("language") or "unknown"
-        desc = repo.get("description") or "no description provided"
-        existing_readme = readmes.get(repo["name"]) or "none"
 
-        prompt = (
-            f"Write a FULL, publication-ready README.md for this GitHub repository.\n\n"
-            f"Repo: {repo['name']}\n"
-            f"Description: {desc}\n"
-            f"Languages: {langs}\n"
-            f"Stars: {repo.get('stars', 0)}\n"
-            f"Topics: {', '.join(repo.get('topics', []))}\n"
-            f"Existing README: {existing_readme[:200] if existing_readme != 'none' else 'none'}\n\n"
-            f"The README must include ALL of these sections:\n"
-            f"1. Title with badges placeholder\n"
-            f"2. One-paragraph project description\n"
-            f"3. Features list\n"
-            f"4. Tech Stack\n"
-            f"5. Prerequisites\n"
-            f"6. Installation (step-by-step with code blocks)\n"
-            f"7. Usage (with code examples)\n"
-            f"8. Project Structure\n"
-            f"9. Contributing\n"
-            f"10. License\n\n"
-            f"Return ONLY valid JSON: {{\"repo\": \"{repo['name']}\", \"readme_content\": \"<full markdown>\"}}\n"
-            f"IMPORTANT: Escape all newlines as \\n, all quotes as \\\" inside the JSON string."
+    # Generate ONE full README for the weakest repo (first candidate)
+    first = candidates[0]
+    langs = ", ".join(first.get("languages", {}).keys()) or first.get("language") or "unknown"
+    desc = first.get("description") or "no description provided"
+    existing_readme = readmes.get(first["name"]) or "none"
+
+    prompt = (
+        f"Write a FULL, publication-ready README.md for this GitHub repository.\n\n"
+        f"Repo: {first['name']}\n"
+        f"Description: {desc}\n"
+        f"Languages: {langs}\n"
+        f"Stars: {first.get('stars', 0)}\n"
+        f"Topics: {', '.join(first.get('topics', []))}\n"
+        f"Existing README: {existing_readme[:200] if existing_readme != 'none' else 'none'}\n\n"
+        f"The README must include ALL of these sections:\n"
+        f"1. Title with badges placeholder\n"
+        f"2. One-paragraph project description\n"
+        f"3. Features list\n"
+        f"4. Tech Stack\n"
+        f"5. Installation (step-by-step with code blocks)\n"
+        f"6. Usage (with code examples)\n"
+        f"7. Contributing\n"
+        f"8. License\n\n"
+        f"Return ONLY valid JSON: {{\"repo\": \"{first['name']}\", \"readme_content\": \"<full markdown>\"}}\n"
+        f"IMPORTANT: Escape all newlines as \\n, all quotes as \\\" inside the JSON string."
+    )
+
+    try:
+        message = client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=3000,
+            system="Return ONLY valid JSON. Escape newlines as \\n in strings. No markdown fences around the JSON.",
+            messages=[{"role": "user", "content": prompt}],
         )
+        result = _parse_json_response(message.content[0].text)
+        if result.get("readme_content"):
+            rewrites.append(result)
+    except Exception as e:
+        print(f"  ⚠ Full README generation failed for {first['name']}: {e}")
 
-        try:
-            message = client.messages.create(
-                model=CLAUDE_MODEL,
-                max_tokens=3000,
-                system="Return ONLY valid JSON. Escape newlines as \\n in strings. No markdown fences around the JSON.",
-                messages=[{"role": "user", "content": prompt}],
-            )
-            result = _parse_json_response(message.content[0].text)
-            if result.get("readme_content"):
-                rewrites.append(result)
-        except Exception as e:
-            print(f"  ⚠ README generation failed for {repo['name']}: {e}")
+    # For remaining candidates, generate short improvement notes only (no full README)
+    for repo in candidates[1:]:
+        langs = ", ".join(repo.get("languages", {}).keys()) or repo.get("language") or "unknown"
+        desc = repo.get("description") or "no description"
+        existing = readmes.get(repo["name"]) or "none"
+        rewrites.append({
+            "repo": repo["name"],
+            "readme_content": None,
+            "note": f"Needs improvement: {repo['name']} ({langs}) — "
+                    f"{'missing README entirely' if existing == 'none' else f'current README is only {len(existing)} chars'}. "
+                    f"Add project description, install instructions, and usage examples.",
+        })
 
     return rewrites
 

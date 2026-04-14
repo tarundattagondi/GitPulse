@@ -1,8 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GitBranch, Search, BarChart3, Briefcase, FileText, Target, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function Landing() {
+  // Warm up the backend while user is on the landing page
+  useEffect(() => {
+    const base = import.meta.env.VITE_API_BASE_URL || '';
+    fetch(`${base}/api/warmup`).catch(() => {});
+  }, []);
   const [username, setUsername] = useState('');
   const [jdText, setJdText] = useState('');
   const [showJd, setShowJd] = useState(false);

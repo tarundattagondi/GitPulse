@@ -85,8 +85,8 @@ export default function Loading() {
             ))}
           </div>
           <p className="text-text-muted text-xs mt-6">
-            This usually takes 30-60 seconds.{hasJd ? ' JD matching adds ~20 seconds.' : ''}<br />
-            First analysis after a cold start can take up to 2 minutes.
+            This usually takes 60-90 seconds.{hasJd ? ' JD matching adds ~20 seconds.' : ''}<br />
+            First analysis after a quiet period can take up to 2 minutes.
           </p>
         </div>
       )}

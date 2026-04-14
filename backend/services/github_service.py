@@ -70,12 +70,12 @@ async def fetch_profile(username: str) -> dict:
     }
 
 
-async def fetch_all_repos(username: str, max_repos: int = 30) -> list[dict]:
-    async with httpx.AsyncClient() as client:
+async def fetch_all_repos(username: str, max_repos: int = 15) -> list[dict]:
+    async with httpx.AsyncClient(timeout=20) as client:
         data = await _get(
             client,
             f"{GITHUB_API_BASE}/users/{username}/repos",
-            params={"sort": "updated", "per_page": max_repos, "type": "owner"},
+            params={"sort": "pushed", "direction": "desc", "per_page": 100, "type": "owner"},
         )
         if not data:
             return []
@@ -99,14 +99,22 @@ async def fetch_all_repos(username: str, max_repos: int = 30) -> list[dict]:
                 "default_branch": r.get("default_branch", "main"),
                 "languages": {},
             })
+            if len(repos) >= max_repos:
+                break
 
-        # Fetch languages per repo concurrently (cap at 20 to stay under rate limit)
+        # Fetch languages per repo in parallel with semaphore
+        semaphore = asyncio.Semaphore(10)
+
         async def _fetch_lang(repo: dict) -> None:
-            lang_data = await _get(client, f"{GITHUB_API_BASE}/repos/{username}/{repo['name']}/languages")
-            if lang_data:
-                repo["languages"] = lang_data
+            async with semaphore:
+                try:
+                    lang_data = await _get(client, f"{GITHUB_API_BASE}/repos/{username}/{repo['name']}/languages")
+                    if lang_data:
+                        repo["languages"] = lang_data
+                except Exception:
+                    pass
 
-        await asyncio.gather(*[_fetch_lang(r) for r in repos[:20]])
+        await asyncio.gather(*[_fetch_lang(r) for r in repos])
 
     return repos
 
