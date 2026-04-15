@@ -114,7 +114,11 @@ export default function Results() {
         {matchResult && <MatchBreakdownSection match={matchResult} />}
 
         {/* Recommendations */}
-        {recs && <RecommendationsSection recs={recs} />}
+        {recs && <RecommendationsSection recs={recs} onOpenPR={(repoName, content) => {
+          setPrModalRepo(repoName);
+          setPrModalReadme(content);
+          setPrModalOpen(true);
+        }} />}
 
         {/* Repos */}
         {repos.length > 0 && (
@@ -257,7 +261,7 @@ function MatchBreakdownSection({ match }) {
   );
 }
 
-function RecommendationsSection({ recs }) {
+function RecommendationsSection({ recs, onOpenPR }) {
   const actions = recs.priority_actions || [];
   const projects = recs.missing_projects || [];
   const rewrites = recs.readme_rewrites || [];
@@ -316,11 +320,7 @@ function RecommendationsSection({ recs }) {
                 <ExpandableReadme
                   key={i}
                   rewrite={rw}
-                  onOpenPR={(repoName, content) => {
-                    setPrModalRepo(repoName);
-                    setPrModalReadme(content);
-                    setPrModalOpen(true);
-                  }}
+                  onOpenPR={onOpenPR}
                 />
               ))}
             </div>
