@@ -5,6 +5,7 @@ import { getLatestAnalysis, analyzeProfile } from '../services/api';
 import MatchGauge from '../components/MatchGauge';
 import ScoreBreakdown from '../components/ScoreBreakdown';
 import ShareCard from '../components/ShareCard';
+import PRModal from '../components/PRModal';
 
 export default function Results() {
   const { state } = useLocation();
@@ -15,6 +16,9 @@ export default function Results() {
   const [username, setUsername] = useState(state?.username || searchParams.get('username') || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [prModalOpen, setPrModalOpen] = useState(false);
+  const [prModalRepo, setPrModalRepo] = useState(null);
+  const [prModalReadme, setPrModalReadme] = useState('');
 
   useEffect(() => {
     if (data) return;
@@ -134,6 +138,14 @@ export default function Results() {
         {/* Share */}
         <ShareCard username={username} score={overallScore} actions={priorityActions.slice(0, 3)} />
       </div>
+
+      <PRModal
+        isOpen={prModalOpen}
+        onClose={() => setPrModalOpen(false)}
+        repoName={prModalRepo}
+        readmeContent={prModalReadme}
+        username={username}
+      />
     </div>
   );
 }
@@ -293,9 +305,24 @@ function RecommendationsSection({ recs }) {
         {/* README Rewrites */}
         {rewrites.length > 0 && (
           <div>
-            <h3 className="text-sm font-medium text-accent-light mb-2">README Improvements</h3>
+            <div className="mb-3">
+              <h3 className="text-sm font-medium text-accent-light mb-1">README Improvements</h3>
+              <p className="text-xs text-text-muted">
+                Suggested rewrites for repos with weak READMEs. Click any card to expand. If you own the repo, click "Open as Pull Request" to push the rewrite directly to GitHub for review.
+              </p>
+            </div>
             <div className="space-y-2">
-              {rewrites.map((rw, i) => <ExpandableReadme key={i} rewrite={rw} />)}
+              {rewrites.map((rw, i) => (
+                <ExpandableReadme
+                  key={i}
+                  rewrite={rw}
+                  onOpenPR={(repoName, content) => {
+                    setPrModalRepo(repoName);
+                    setPrModalReadme(content);
+                    setPrModalOpen(true);
+                  }}
+                />
+              ))}
             </div>
           </div>
         )}
@@ -343,17 +370,35 @@ function RecommendationsSection({ recs }) {
   );
 }
 
-function ExpandableReadme({ rewrite }) {
+function ExpandableReadme({ rewrite, onOpenPR }) {
   const [open, setOpen] = useState(false);
+  const hasFullRewrite = rewrite.readme_content && rewrite.readme_content.length > 50;
+
   return (
     <div className="rounded-lg bg-bg-tertiary border border-border">
       <button onClick={() => setOpen(!open)} className="w-full p-3 flex justify-between items-center text-left">
-        <span className="text-sm text-text-primary">{rewrite.repo}</span>
-        <span className="text-text-muted">{open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</span>
+        <div>
+          <span className="text-sm text-text-primary">{rewrite.repo}</span>
+          {rewrite.note && !hasFullRewrite && (
+            <p className="text-xs text-text-muted mt-0.5">{rewrite.note}</p>
+          )}
+        </div>
+        <span className="text-text-muted shrink-0">{open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</span>
       </button>
-      {open && (
+      {open && hasFullRewrite && (
         <div className="px-3 pb-3 border-t border-border pt-2">
           <pre className="text-xs text-text-muted whitespace-pre-wrap font-mono max-h-64 overflow-auto">{rewrite.readme_content}</pre>
+          <div className="mt-4 pt-3 border-t border-border flex items-center justify-between">
+            <p className="text-xs text-text-muted">
+              Owner of this repo? Open this rewrite as a real PR.
+            </p>
+            <button
+              onClick={() => onOpenPR(rewrite.repo, rewrite.readme_content)}
+              className="px-4 py-2 bg-accent hover:bg-accent-dark text-white rounded font-medium text-sm shrink-0"
+            >
+              Open as Pull Request
+            </button>
+          </div>
         </div>
       )}
     </div>
