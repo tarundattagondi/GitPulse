@@ -102,7 +102,7 @@ async def fetch_all_repos(username: str, max_repos: int = 15) -> list[dict]:
             if len(repos) >= max_repos:
                 break
 
-        # Fetch languages per repo in parallel with semaphore
+        # Fetch languages and READMEs per repo in parallel
         semaphore = asyncio.Semaphore(10)
 
         async def _fetch_lang(repo: dict) -> None:
@@ -114,7 +114,26 @@ async def fetch_all_repos(username: str, max_repos: int = 15) -> list[dict]:
                 except Exception:
                     pass
 
-        await asyncio.gather(*[_fetch_lang(r) for r in repos])
+        async def _fetch_readme_excerpt(repo: dict) -> None:
+            async with semaphore:
+                try:
+                    resp = await client.get(
+                        f"{GITHUB_API_BASE}/repos/{username}/{repo['name']}/readme",
+                        headers=github_headers(),
+                    )
+                    if resp.status_code == 200:
+                        content = resp.json().get("content", "")
+                        decoded = base64.b64decode(content).decode("utf-8", errors="replace")
+                        repo["readme_excerpt"] = decoded[:2000]
+                    else:
+                        repo["readme_excerpt"] = ""
+                except Exception:
+                    repo["readme_excerpt"] = ""
+
+        await asyncio.gather(
+            *[_fetch_lang(r) for r in repos],
+            *[_fetch_readme_excerpt(r) for r in repos],
+        )
 
     return repos
 
