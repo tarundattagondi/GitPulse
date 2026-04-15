@@ -43,11 +43,23 @@ RATE_LIMITED_PREFIXES = [
 ]
 
 
+def _add_cors_headers(response, request):
+    """Add CORS headers to responses that bypass the CORSMiddleware pipeline."""
+    origin = request.headers.get("origin", "")
+    import re
+    pattern = r"https?://(localhost(:\d+)?|.*\.vercel\.app|.*\.up\.railway\.app)|chrome-extension://.*"
+    if origin and re.fullmatch(pattern, origin):
+        response.headers["access-control-allow-origin"] = origin
+        response.headers["access-control-allow-methods"] = "*"
+        response.headers["access-control-allow-headers"] = "*"
+    return response
+
+
 @app.middleware("http")
 async def log_and_rate_limit(request: Request, call_next):
     start = time.time()
 
-    # Skip rate limiting for OPTIONS (CORS preflight) and non-API paths
+    # Skip rate limiting for OPTIONS (CORS preflight)
     if request.method != "OPTIONS":
         path = request.url.path
         if any(path.startswith(p) for p in RATE_LIMITED_PREFIXES):
@@ -58,7 +70,7 @@ async def log_and_rate_limit(request: Request, call_next):
                     from backend.storage import record_rate_hit, count_rate_hits
                     total = count_rate_hits(client_ip, hours=24)
                     if total >= DAILY_LIMIT:
-                        return JSONResponse(
+                        resp = JSONResponse(
                             status_code=429,
                             content={
                                 "error": "rate_limit_exceeded",
@@ -68,6 +80,7 @@ async def log_and_rate_limit(request: Request, call_next):
                                 "used": total,
                             },
                         )
+                        return _add_cors_headers(resp, request)
                     record_rate_hit(client_ip, endpoint=path)
                 except Exception:
                     pass
@@ -369,4 +382,5 @@ async def startup():
 
 
 # Startup confirmation for Railway logs
-print(f"GitPulse app loaded with {len(app.user_middleware)} middleware", file=sys.stderr)
+middleware_names = [m.cls.__name__ if hasattr(m, 'cls') else str(m) for m in app.user_middleware]
+print(f"GitPulse loaded with middleware: {middleware_names}", file=sys.stderr)
